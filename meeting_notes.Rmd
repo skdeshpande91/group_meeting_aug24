@@ -1,0 +1,384 @@
+---
+title: "Enter the tidyverse"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, comment = "", prompt = TRUE, collapse = TRUE, tidy=TRUE, fig.align = "center")
+```
+
+## Getting Started
+
+We will be working within the [``tidyverse''](https://www.tidyverse.org/), a suite of packages for data manipulation, exploration, and visualization. 
+All of these package are based on a common design philosophy, mostly developed by Hadley Wickham.
+To install all of these packages, run the following command in the R console:
+```{r install-tidyverse, eval = FALSE}
+install.packages("tidyverse")
+```
+
+** You only ever need to do this once**.
+From now on, to load the tidyverse packages, it suffices to run
+```{r load-tidyverse}
+library(tidyverse)
+```
+
+You will also need to set your working directory.
+If you cloned the repository for this meeting, your local repository will be your working directory.
+To set it you will need to enter `setwd(<PATH TO DIRECTORY>)` in the R console.
+
+## Reading in tabular data
+
+The file [data/nba_shooting.csv](data/nba_shooting.csv) is a CSV file containing NBA shooting statistics for all players between the 1996-97 season and the 2015-16 season.
+In particular, the file lists the following
+
+* Numbers of made and attempted field goals, which include both two-point and three-point shots. 
+* Numbers of made and attempted three point shots
+* Number of made and attempted free throw shots
+
+Within the tidyverse, the standard way to store and manipulate tabular data is a `tbl` (pronounced ``tibble'').
+To read data from a CSV into a tbl we use the `read_csv` function:
+
+```{r read-nba-shooting-small}
+raw_shooting <- read_csv(file = "data/nba_shooting.csv")
+```
+
+Before proceeding, let us parse the syntax `raw_shooting <- read_csv(...)`
+The first thing to notice is that we're using the assignment operator `<-`
+This tells R that we want it to evalaute whatever is on the right-hand side (in this case `read_csv(file = "data/nba_shooting.csv")`) and assign the resulting evaluation to a new object called `nba_shooting_small` (which R will create).
+We called the function `read_csv()` with one argument `file`, which can be either a full or relative path.
+The function can actually take more arguments -- check out the function documentation by running `help(read_csv)` -- but you usually don't need to specify them.
+
+
+When we run the above command, we see some output printed to the console.
+This is `read_csv` telling us that it (a) found the file, (b) read it in successfully, and (c) identified the type of data stored in each column.
+We see, for instance, that the column named "PLAYER" contains *character strings*, and is parsed as `col_character()`.
+Similarly, the number of field goals made ("FGM") is parsed as integer data.
+You can manually specify the data types for each column by setting `read_csv()`'s``col_types'' argument.
+But 95% of the time, it's default guesses are pretty good. 
+
+When we print out our tbl, R outputs many things: the dimension (in this case, $7447 \times 8$), the column names, the *type* of data included in each column, and then only the first 10 rows of the data.
+
+```{r print-raw-shooting}
+raw_shooting
+```
+
+## Wrangling Data
+
+Now that we have read in our dataset, we're ready to begin playing with it.
+Very often, an analysis will involve some type of pre-processing, manipulation, or *wrangling* of the data contained in the tbl.
+For instance, we may want to compute some new summary statistic based on the data in the table.
+In our NBA example, we could compute, say, each player's field goal percentage.
+Alternatively, we could subset our data to find all players who took at least 100 three point shots and made at least 80% of their free throws.
+The package `dplyr()` contains five main functions corresponding to the most common things that you'll end up doing to your data.
+
+- Reorder the rows with `arrange()`
+- Creating new variables that are functions of existing variables with `mutate()`
+- Identify observations satisfying certain conditions with `filter()`
+- Picking a subset of variables by names with `select()`
+- Generating simple summaries of the data with `summarise()`
+
+### Arranging Data
+The `arrange()` function works by taking a tbl and a set of column names and sorting the data according to the values in these columns.
+For instance to sort the rows in **ascending** order of field goal attempts (FGA), we can do:
+
+```{r arrange-fga-1}
+arrange(raw_shooting, FGA)
+```
+To break ties, we would pass additional columns to `arrange`.
+For instance, the code below sorts the players first by the number of field goal attempts and then by the number of three point attempts.
+```{r arrange-fga-mult-cols}
+arrange(raw_shooting, FGA, TPA)
+```
+We could also sort the players in descending order as follows :
+```{r arrange-fga-desc}
+arrange(raw_shooting, desc(FGA))
+```
+
+Now consider the two lines of code:
+```{r arrange-print}
+arrange(raw_shooting, PLAYER)
+raw_shooting
+```
+In the first line, we've sorted the players in alphabetic order of their first name.
+But when we print out our tbl, `raw_shooting`, we see that the players are no longer sorted alphabetically.
+This is because dplyr (and most other R) functions **never** modify their input but work by creating a copy and modifying that copy.
+
+For way more information on R's semantics, check out[this Stack Overflow discussion](https://stackoverflow.com/questions/15759117/what-exactly-is-copy-on-modify-semantics-in-r-and-where-is-the-canonical-source) and [this writeup by Luke Tierney](http://homepage.divms.uiowa.edu/~luke/R/references.html).
+
+We now have two choices: we could create a new tbl in which the rows by been arranged by player name or we could **overwrite** the existing tbl `raw_shooting`.
+Both options make use of the assignment operator.
+```{r arrange-override}
+raw_shooting <- arrange(raw_shooting, PLAYER)
+raw_shooting
+```
+
+
+### Creating new variables from old
+
+While arranging our data is useful, it is not quite sufficient to determine which player is the best shooter in our dataset.
+The simplest way to compare players' shooting ability is with field goal percentage (FGP).
+We can compute this percentage using the formula $\text{FGP} = \frac{\text{FGA}}{\text{FGM}}.$
+We use the function `mutate()` to add a column to our tbl.
+```{r mutate-fgp}
+mutate(raw_shooting, FGP = FGA/FGM)
+```
+
+The syntax for `mutate()` looks kind of similar to `arrange()`: the first argument tells R what tbl we want to manipulate and the second argument tells R how to compute FGP.
+As expected, when we run this command, R returns a tbl with a new column containing the field goal percentage for each of these 10 players.
+
+It turns out that we can add *multiple* columns to a tbl at once by passing more arguments to `mutate()`, one for each column we wish to define.
+So in order to add columns for free throw percentage (FTP) and three point percentage (TPP), we can do the following:
+
+```{r multiline-syntax}
+mutate(raw_shooting,
+         TPP = TPM/TPA,
+         FTP = FTM/FTA)
+```
+Notice how we have spread our command over multiple lines.
+
+#### Exercises
+
+1. After running the above command, print out the tbl `raw_shooting`. You'll notice that just like with `arrange()`, if we call `mutate()` by itself, R will **not** permanently add a new column to our existing tbl. Use the assignment operation `<-` to overwrite `raw_shooting` to include columns for field goal percentage (FGP), three point percentage (TPP), and free throw percentage (FTP).
+2. One criticism of FGP is that it treats 2-point shots the same as 3-point shots.
+[effective Field Goal Percentage](https://en.wikipedia.org/wiki/Effective_field_goal_percentage) is a statistic that adjusts FGP to account for the fact that a made 3-point shots is worth 50% more than a made 2-point shot. 
+The formula for eFGP is
+$$ \text{eFGP} = \frac{\text{FGM} + 0.5 \times \text{TPM}}{\text{FGA}}.$$
+Overwrite `raw_shooting` to include a column of eFGP.
+3. Both FGP and eFGP totally ignore free throws! One metric that accounts for all field goals, three pointers, and free throws is [true shooting percentage](https://en.wikipedia.org/wiki/True_shooting_percentage), whose formula is given by
+$$
+\text{TSP} = \frac{\text{PTS}}{2\times(\text{FGA} + 0.44\times \text{FTA})},
+$$
+where PTS is the total number of points scored. Add columns to `raw_shooting` for $\text{PTS}$ and $\text{TSP}.$ You should be able to do with only a single call to `mutate()`!
+
+```{r add-tsp, results = "hide", echo = FALSE}
+raw_shooting <-
+  raw_shooting %>%
+  mutate(FGP = FGM/FGA,
+         TPP = TPM/TPA,
+         FTP = FTM/FTA,
+         eFGP = (FGM + 0.5 * TPM)/FGA,
+         PTS = 2 * FGM + TPM + FTM,
+         TSP = PTS/(2 * (FGA + 0.44 * FTA)))
+```
+
+### Selecting Columns
+
+At this point, our tbl has lots of columns and when we try to it out, we can't see all of them anymore.
+```{r print-tbl-subset-columns}
+raw_shooting
+```
+We can use `select()` to pull out the columns we want to use in our subsequent analyses.
+For instance, we may want to only focus on the columns PLAYER, SEASON and PTS and ignore the rest of the columns.
+```{r select}
+select(raw_shooting, PLAYER, SEASON, PTS)
+```
+
+#### Exercises
+1. Create a new tbl `shooting_subset` that includes only player, season, field goal attempts, field goal percentage, effective field goal percentage, and true shooting percentage.
+2. Which player had the best true shooting percentage? Do you think he is the best shooter in the game?
+
+### Filtering & Subsetting
+The function `filter()` is used to pull out subsets of observations that satisfy some logical condition like "FGA > 100" or "FGA > 100 and FTA > 50".
+To make such comparisons in R, we have the following operators available at our disposal:
+
+* `==` for "equal to"
+* `!=` for "not equal to"
+* `<` and `<=` for "less than" and "less than or equal to"
+* `>` and `>=` for "greater than" and "greater than or equal to"
+* `&`, `|`, `!` for "AND" and "OR" and "NOT"
+The code below filter out all of the players with at least 100 field goals in a single season
+```{r filter-fga}
+filter(raw_shooting, FGA > 100)
+```
+
+We can also filter on more complicated conditions constructed using the AND, OR, and NOT operators: `&`, `|`, and `!`.
+For instance, to filter observations with at least 100 field goal attempts OR 50 three point attempts, we would do
+```{r filter-or}
+filter(raw_shooting, FGA >= 100 | TPA >= 50)
+```
+
+We may combine these constraints by enclosing them in parantheses.
+```{r filter-complex}
+filter(raw_shooting, (FGA >= 100 & TPA >= 50) | (FGP >= 0.45 & FGP <= 0.5))
+```
+
+What if we wanted to pull out the observations corresponding to the 2015-16 and 2014-15 season.
+We could do something like `filter(raw_shooting, (SEASON == 2016) | (SEASON == 2015))`, which would be perfectly fine.
+However, what if we wanted data from 1998-99, 2011-12, and 2015-16? 
+Typing a lot of expressions like `SEASON == ...` would be rather tedious.
+The `%in%` operator lets us avoid this tedium: 
+```{r filter-in}
+filter(raw_shooting, SEASON %in% c(1999, 2012, 2016))
+```
+In the syntax above we used the concatenate function `c()` which creates a vector, which is a fundamental base R data structure.
+See [Chapter 20 of ``R for data sciences''](https://r4ds.had.co.nz/vectors.html) for much more on vectors.
+
+The 1998-99 and 2011-12 NBA seasons were shortened to a lockout over the collective bargaining agreement between players and owners.
+Depending on our ultimate analysis goals, we may want to exclude the these two seasons from our data using a combination of the NOT `!` operator and `%in%`.
+```{r filter-not-in}
+filter(raw_shooting, !SEASON %in% c(1999, 2012))
+```
+
+
+#### Exercise
+1. Create a tbl `nba_shooting` that includes only those player-seasons from non-lockout seasons  who recorded at least 100 field goal attempts, at least 100 three point attempts, and at least 50 free throw attempts.
+
+```{r filter-players, echo = FALSE, results = "hide"}
+nba_shooting <- 
+  filter(raw_shooting, 
+         (FGA >= 100 & 
+            FTA >= 100 & 
+            TPA >= 50 & 
+            !SEASON %in% c(1999, 2012)))
+```
+
+
+### Creating Categorical Variables
+So far, we have used `mutate()` to compute numeric or continuous variables.
+Often in an analysis, however, we may want to *bin* these values into smaller buckets or categories. 
+For instance, we may rather arbitrarily classify players based on their three-point shooting prowess as follows:
+
+* Hopeless: TPP < 20%
+* Below Average: 20% <= TPP < 30%
+* Average: 30% <= TPP < 35%
+* Above Average: 35% < TPP < 40%
+* Elite: TPP > 40% 
+
+In order to add a column to `nba_shooting` that includes these classifications, we can use the `case_when()` function
+```{r case-when, tidy = FALSE}
+nba_shooting <- mutate(nba_shooting,
+                       Classification = case_when(
+                         TPP < 0.2 ~  "Hopeless",
+                         0.2 <= TPP & TPP < 0.3 ~ "Below Average",
+                         0.3 <= TPP & TPP < 0.35 ~  "Average",
+                         0.35 <= TPP & TPP < 0.4 ~ "Above Average",
+                         0.4 <= TPP ~ "Elite"))
+```
+
+Let's take a minute to unpack the syntax above.
+Within `mutate()`, we have started like we always did, with the name of the new variable on the left hand side of an equal sign.
+Then we called the `case_when()` function.
+Within this function, we have a new line for each of the values of the new variable "Classification".
+On each line we have an expression with a twiddle (`~`).
+On the left of the `~`, we have put a logical expression and on the right we have written the value of "Clasification."
+
+### Summarizing Individual Columns
+
+What was the average field goal percentage across all non-lockout seasons?
+We can use the dplyr verb `summarize()` to compute summary statistics of our data.
+```{r summarize-all-fpg}
+summarize(nba_shooting, mu_FGP = mean(FGP))
+```
+Like the other dplyr verbs we've seen so far, the first argument of `summarize()` is the tbl we want to analyze and the output is a new tbl.
+The outputted tbl contains a single row and a single column, whose name is given by the left-hand side of the second argument to `summarize()`.
+The value in that column is the result of evaluating the expression in the right-hand side of the second argument.
+
+Just like `arrange` and `mutate`, `summarize` can take multiple arguments.
+For instance, we can compute the mean and standard deviation of FGP as follows:
+```{r multiple-summary}
+summarize(nba_shooting,
+          mu_FGP = mean(FGP),
+          sigma_FGP = sd(FGP))
+```
+Now we the resulting tbl contain two columns, one each for the mean and standard deviation.
+Just like `mutate()`, the right-hand side expressions in the arguments for `summarize()` need not involve only a single variable in the tbl, as the following example demonstrates:
+```{r silly-summary}
+summarize(nba_shooting,
+          my_new_var = mean(FGP + TPA)/quantile(TPP, probs = 0.05))
+```
+
+#### Exercises
+1. Compute the average field goal percentage in the 2015-16 season. At this point, you should be able to do this with two lines, one to subset data from the 2015-16 season (`SEASON == 2016`) and one to compute the mean FGP.
+
+## Piping
+
+Up to this point, we've seen how to use individual dplyr verbs one at a time.
+Each of these verbs takes a tbl as an input and returns a different tbl as an output. 
+More complex data analysis tasks often require sequences of several operations on the dataset. 
+Given what we have seen so far, it would appear that we have two two options: (1) save a temporary tbl after each function application and apply the next function to the temporary tbl or (2) "nest" all of the functions together.
+Below is an example of what these two strategies look like:
+
+```{r multiple-functions-options,eval = FALSE}
+# An Example: Applying func_1(), func_2(), and func_3() sequentially to a tibble named dat.
+
+# Strategy 1
+dat_1     <- func_1(dat)
+dat_2     <- func_2(dat_1)
+dat_final <- func_3(dat_2)
+
+# Strategy 2
+dat_final <- func_3(func_2(func_1(dat)))
+```
+
+Both strategies are hard to read.
+The first strategy can also be error prone: you have to keep track of the names of a bunch of temporary objects and it's very easy to accidentally make mistakes like `dat_2(func_dat)`.
+On top of that, if the tbl `dat` is large, the first option can be incredibly inefficient since it makes up to 3 copies of the tbl.
+The second strategy can become problematic when each function depends on lots of additional arguments. 
+
+Luckily there's another option -- the pipe operator `%>%`.
+Here is what the same example looks like using the pipe:
+```{r,eval = FALSE}
+dat_final <- 
+  dat %>% 
+  func_1() %>% 
+  func_2() %>% 
+  func_3()
+```
+
+Let's break down what's happening on the right-hand side of the assignment operator.
+First, R "pipes" the tbl `dat` into into the function function `func_1()`.
+Then it pipes the result of evaluating `func_1(dat)` into `func_2()` and so on and so forth.
+The sequence of analysis flow naturally top-to-bottom and puts the emphasis on the *actions* being carried out by the analyst (i.e. the functions) and the final output rather than a bunch of temporary tbl's that may not be of much interest.
+
+Internally, the pipe tells R to pass the result of an evaluation to the *first* argument of the next function in the pipeline.
+So, as described in [Chapter 5.6 of R for data science](https://r4ds.had.co.nz/transform.html#grouped-summaries-with-summarise), the expression `x %>% f(y)` becomes `f(x,y)`.
+Check out [this awesome tweet](https://twitter.com/daniellequinn88/status/1193777505746014209?s=20) for a good visualization of the pipe.
+
+There are several conventions for formating code when using the pipe. 
+See [here](http://style.tidyverse.org/pipes.html) and [here](http://r4ds.had.co.nz/pipes.html) for much more information and for some advanced "special" pipes.
+
+To demonstrate the pipe, let's re-compute the league average field goal percentage in 2015-16.
+```{r pipe-demo}
+nba_shooting %>%
+  filter(SEASON == 2016) %>%
+  summarize(mu_FGP = mean(FGP))
+```
+
+## Grouped Computation
+
+A lot of data analysis follows a "split-apply-combine" paradigm: we first *split* the data into smaller subsets, *apply* the same calculation on every subset, and then *combine* the results from each subset.
+For instance, what if we want to compute the average field goal percentage in all seasons in our dataset.
+The function `group_by()`, in conjunction with the pipe operation, make this particularly easy.
+
+To get started, we'll overwrite nba_shooting and will add a grouping
+```{r group-by-1}
+grouped_shooting <-
+  nba_shooting %>%
+  group_by(SEASON)
+grouped_shooting
+```
+When we print out `grouped_shooting` now, we notice an extra line that tells us the tbl has been grouped by SEASON.
+Now when we pass this tibble on to subsequent calculations, these calculations will be done on each group.
+```{r group-by-2}
+grouped_shooting %>% summarize(mu_FGP = mean(FGP))
+```
+
+**Important**: if you are working with a tbl and add a grouping, *all* subsequent calls to `mutate()`, `filter()`, and `summarize()` will be grouped.
+The function `ungroup()` removes a grouping.
+
+#### Exercises
+1. One issue with the solution above was that we still created a temporary tbl `grouped_shooting`. Compute the mean and standard deviation of field goal percentages for all seasons. (*Hint* it's possible to do this with only 2 calls to the pipe)
+
+2. One way to determine which player had the best shooting performance in a single season is by standardizing the true shooting percentage within a season.
+In order to do this, we'll need to write our own standardization function:
+```{r standardize-function}
+standardize <- function(x){
+  mu_x <- mean(x, na.rm = TRUE)
+  sd_x <- sd(x, na.rm = TRUE)
+  return( (x - mu_x)/sd_x )
+}
+```
+Using `standardize`, add a column (``zTSP'') to `nba_shooting` which contains the season-standardized true shooting percentage.
+
+
+
